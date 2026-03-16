@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Options Pricer — Ayco AI{% endblock %}
+
+{% block extra_style %}
+<style>
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .option-toggle { display: flex; gap: 0; margin-bottom: 0; }
+  .option-toggle input[type="radio"] { display: none; }
+  .option-toggle label {
+    flex: 1; text-align: center;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    margin: 0;
+    letter-spacing: 0.1em;
+  }
+  .option-toggle label:first-of-type { border-radius: 2px 0 0 2px; }
+  .option-toggle label:last-of-type  { border-radius: 0 2px 2px 0; border-left: none; }
+  .option-toggle input:checked + label {
+    background: var(--gold);
+    color: var(--ink);
+    border-color: var(--gold);
+    font-weight: 500;
+  }
+
+  .greeks-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .greek {
+    background: var(--panel);
+    padding: 18px 16px;
+  }
+
+  .greek-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--gold);
+    margin-bottom: 4px;
+    font-style: italic;
+  }
+
+  .greek-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .greek-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 16px;
+    color: var(--white);
+  }
+
+  .greek-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .price-hero {
+    text-align: center;
+    padding: 32px;
+    background: linear-gradient(135deg, rgba(201,168,76,0.08), rgba(201,168,76,0.02));
+    border: 1px solid var(--gold-dim);
+    border-radius: 2px;
+    margin-bottom: 24px;
+  }
+
+  .price-hero .label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  .price-hero .value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 56px;
+    font-weight: 300;
+    color: var(--white);
+    line-height: 1;
+  }
+
+  .formula-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 20px 24px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 2;
+  }
+
+  .formula-box .f-gold { color: var(--gold); }
+  .formula-box .f-white { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .form-row { grid-template-columns: 1fr; }
+    .greeks-grid { grid-template-columns: repeat(3, 1fr); }
+    .price-hero .value { font-size: 40px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Module 02 · Quantitative Finance</div>
+  <h1>Black-Scholes<br>Options Pricer</h1>
+  <p>Price European call & put options using the Black-Scholes model. Outputs fair value, moneyness, and full Greeks.</p>
+</div>
+
+<div class="container">
+  <div class="grid-2" style="align-items: start;">
+
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title">Option Parameters</div>
+      <form action="/options/price" method="POST">
+        <div class="form-group">
+          <label>Option Type</label>
+          <div class="option-toggle">
+            <input type="radio" name="option_type" id="call" value="call" {% if option_type != 'put' %}checked{% endif %}>
+            <label for="call">Call Option</label>
+            <input type="radio" name="option_type" id="put" value="put" {% if option_type == 'put' %}checked{% endif %}>
+            <label for="put">Put Option</label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Stock Price (S) $</label>
+            <input type="number" name="stock_price" step="0.01" min="0.01"
+                   value="{{ S or 150 }}" placeholder="150.00" required>
+          </div>
+          <div class="form-group">
+            <label>Strike Price (K) $</label>
+            <input type="number" name="strike_price" step="0.01" min="0.01"
+                   value="{{ K or 155 }}" placeholder="155.00" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Days to Expiry</label>
+            <input type="number" name="days_to_expiry" step="1" min="1" max="1825"
+                   value="{{ T_days or 30 }}" placeholder="30" required>
+          </div>
+          <div class="form-group">
+            <label>Implied Volatility (%)</label>
+            <input type="number" name="volatility" step="0.1" min="1" max="300"
+                   value="{{ sigma_pct or 25 }}" placeholder="25.0" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Risk-Free Rate (%) — Current 10Y: {{ "%.2f"|format(rf_rate * 100) }}%</label>
+          <input type="number" name="risk_free" step="0.01" min="0"
+                 value="{{ r_pct or "%.2f"|format(rf_rate * 100) }}" placeholder="4.25">
+        </div>
+
+        <button type="submit" class="btn" style="width:100%;">Calculate Price</button>
+      </form>
+    </div>
+
+    <!-- RESULTS -->
+    <div>
+      {% if error %}
+      <div class="error-box">⚠ {{ error }}</div>
+      {% endif %}
+
+      {% if price is defined and price is not none %}
+      <div class="price-hero">
+        <div class="label">{{ option_type|title }} Option Fair Value</div>
+        <div class="value">${{ "%.4f"|format(price) }}</div>
+        <div style="margin-top:12px;">
+          <span class="badge badge-{{ moneyness_class }}">{{ moneyness }}</span>
+        </div>
+      </div>
+
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-label">Intrinsic Value</div>
+          <div class="metric-value" style="font-size:20px;">${{ "%.4f"|format(intrinsic) }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Time Value</div>
+          <div class="metric-value" style="font-size:20px;">${{ "%.4f"|format(time_value) }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">d₁</div>
+          <div class="metric-value" style="font-size:20px;">{{ d1 }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">d₂</div>
+          <div class="metric-value" style="font-size:20px;">{{ d2 }}</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-title">Option Greeks</div>
+        <div class="greeks-grid">
+          <div class="greek">
+            <div class="greek-name">Δ</div>
+            <div class="greek-label">Delta</div>
+            <div class="greek-value">{{ delta }}</div>
+            <div class="greek-desc">Price sensitivity per $1 stock move</div>
+          </div>
+          <div class="greek">
+            <div class="greek-name">Γ</div>
+            <div class="greek-label">Gamma</div>
+            <div class="greek-value">{{ gamma }}</div>
+            <div class="greek-desc">Rate of change of delta</div>
+          </div>
+          <div class="greek">
+            <div class="greek-name">Θ</div>
+            <div class="greek-label">Theta</div>
+            <div class="greek-value">{{ theta }}</div>
+            <div class="greek-desc">Daily time decay ($/day)</div>
+          </div>
+          <div class="greek">
+            <div class="greek-name">V</div>
+            <div class="greek-label">Vega</div>
+            <div class="greek-value">{{ vega }}</div>
+            <div class="greek-desc">Per 1% volatility change</div>
+          </div>
+          <div class="greek">
+            <div class="greek-name">σ</div>
+            <div class="greek-label">IV Used</div>
+            <div class="greek-value">{{ "%.1f"|format(sigma_pct) }}%</div>
+            <div class="greek-desc">Implied volatility input</div>
+          </div>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="card">
+        <div class="card-title">Black-Scholes Formula</div>
+        <div class="formula-box">
+          <div><span class="f-gold">C</span> = S·N(<span class="f-gold">d₁</span>) − K·e<sup>−rT</sup>·N(<span class="f-gold">d₂</span>)</div>
+          <div><span class="f-gold">P</span> = K·e<sup>−rT</sup>·N(−<span class="f-gold">d₂</span>) − S·N(−<span class="f-gold">d₁</span>)</div>
+          <div style="margin-top:12px; font-size:11px;">
+            <span class="f-gold">d₁</span> = [ln(S/K) + (r + σ²/2)T] / (σ√T)<br>
+            <span class="f-gold">d₂</span> = d₁ − σ√T
+          </div>
+        </div>
+        <div class="gold-line"></div>
+        <p style="color:var(--muted); font-size:13px; line-height:1.7;">
+          Enter option parameters on the left to compute the fair value of a European
+          call or put option. The model assumes log-normal returns, constant volatility,
+          and no dividends.
+        </p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
